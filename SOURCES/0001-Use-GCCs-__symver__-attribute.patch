@@ -1,0 +1,49 @@
+From 2abf7fecb5162e4b59ba134c813ebee839eb45e9 Mon Sep 17 00:00:00 2001
+From: Simo Sorce <simo@redhat.com>
+Date: Wed, 14 Jul 2021 10:52:01 -0400
+Subject: [PATCH] Use GCCs __symver__ attribute
+
+This is needed to allow LTO builds, as the __asm__ directives do not give
+enough context to the compiler and the build fails when the -flto flag is
+passed in.
+
+Unfotunately __symver__ is avilbel only startig from GCC 10, so we need
+more macro juggling.
+
+Signed-off-by: Simo Sorce <simo@redhat.com>
+---
+ lib/internal.h | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/lib/internal.h b/lib/internal.h
+index 29fdb7b..64dad24 100644
+--- a/lib/internal.h
++++ b/lib/internal.h
+@@ -350,6 +350,16 @@ static inline int io_getevents(__attribute__((unused)) aio_context_t ctx,
+ #if __GNUC__ >= 4
+ # define DSO_PUBLIC __attribute__ ((visibility ("default")))
+ 
++#if __GNUC__ >= 10
++# define IMPL_SYMVER(name, version) \
++    __attribute__ ((visibility ("default"))) \
++    __attribute__((__symver__("kcapi_" #name "@@LIBKCAPI_" version)))
++
++# define ORIG_SYMVER(name, version) \
++    __attribute__ ((visibility ("default"))) \
++    __attribute__((__symver__("kcapi_" #name "@LIBKCAPI_" version)))
++
++#else
+ # define IMPL_SYMVER(name, version) \
+     __asm__(".global impl_" #name ";"\
+ 	    ".symver impl_" #name ",kcapi_" #name "@@LIBKCAPI_" version);\
+@@ -359,6 +369,7 @@ static inline int io_getevents(__attribute__((unused)) aio_context_t ctx,
+     __asm__(".global orig_" #name ";"\
+ 	    ".symver orig_" #name ",kcapi_" #name "@LIBKCAPI_" version);\
+     __attribute__ ((visibility ("default")))
++#endif
+ 
+ #else
+ # error "Compiler version too old"
+-- 
+2.31.1
+
