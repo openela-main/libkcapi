@@ -1,0 +1,320 @@
+From 8dc30412618019f5480f993c637e4cf0f5a11a39 Mon Sep 17 00:00:00 2001
+From: Zoltan Fridrich <zfridric@redhat.com>
+Date: Tue, 28 Nov 2023 09:34:29 +0100
+Subject: [PATCH] Fix kcapi tests in FIPS mode
+
+Signed-off-by: Zoltan Fridrich <zfridric@redhat.com>
+---
+ test/hasher-test.sh      | 23 +++++++++++---
+ test/kcapi-convenience.c |  2 +-
+ test/kcapi-dgst-test.sh  | 16 +++++-----
+ test/kcapi-enc-test.sh   | 16 +++++-----
+ test/test.sh             | 67 ++++++++++++++++++++++++++++++----------
+ 5 files changed, 86 insertions(+), 38 deletions(-)
+
+diff --git a/test/hasher-test.sh b/test/hasher-test.sh
+index c90fcc9..e97127e 100755
+--- a/test/hasher-test.sh
++++ b/test/hasher-test.sh
+@@ -26,6 +26,11 @@ HMACHASHER="sha1hmac sha256hmac sha384hmac sha512hmac"
+ CHKFILE="${TMPDIR}/chk.$$"
+ ANOTHER="${TMPDIR}/test.$$"
+ 
++is_fips_enabled()
++{
++	test $(cat /proc/sys/crypto/fips_enabled) = "1"
++}
++
+ if [ "$KCAPI_TEST_LOCAL" -eq 1 ]; then
+ 	find_platform kcapi-hasher
+ 	function run_hasher() {
+@@ -365,7 +370,11 @@ fi
+ for suffix in $KAT_SUFFIXES
+ do
+ 	run_kat sha1$suffix   "RFC 2202, section 3, #1"   0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b "Hi There" 0xb617318655057264e28bc0b6fb378c8ef146be00
+-	run_kat sha1$suffix   "RFC 2202, section 3, #2"   "Jefe" "what do ya want for nothing?" 0xeffcdf6ae5eb2fa2d27416d5f184df9c259a7c79
++	if is_fips_enabled; then
++		echo_deact "'RFC 2202, section 3, #2' test case deactivated in FIPS"
++	else
++		run_kat sha1$suffix   "RFC 2202, section 3, #2"   "Jefe" "what do ya want for nothing?" 0xeffcdf6ae5eb2fa2d27416d5f184df9c259a7c79
++	fi
+ 	run_kat sha1$suffix   "RFC 2202, section 3, #3"   0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd 0x125d7342b9ac11cd91a39af48aa17b4f63f175d3
+ 	run_kat sha1$suffix   "RFC 2202, section 3, #4"   0x0102030405060708090a0b0c0d0e0f10111213141516171819 0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd 0x4c9007f4026250c6bc8414f9bf50c86c2d7235da
+ 	run_kat sha1$suffix   "RFC 2202, section 3, #5"   0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c "Test With Truncation" 0x4c1a03424b55e07fe7f27be1d58bb9324a9a5a04
+@@ -374,9 +383,15 @@ do
+ 	run_kat sha256$suffix "RFC 4231, section 4.2, #1" 0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b "Hi There" 0xb0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7
+ 	run_kat sha384$suffix "RFC 4231, section 4.2, #2" 0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b "Hi There" 0xafd03944d84895626b0825f4ab46907f15f9dadbe4101ec682aa034c7cebc59cfaea9ea9076ede7f4af152e8b2fa9cb6
+ 	run_kat sha512$suffix "RFC 4231, section 4.2, #3" 0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b "Hi There" 0x87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854
+-	run_kat sha256$suffix "RFC 4231, section 4.3, #1" "Jefe" "what do ya want for nothing?" 0x5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843
+-	run_kat sha384$suffix "RFC 4231, section 4.3, #2" "Jefe" "what do ya want for nothing?" 0xaf45d2e376484031617f78d2b58a6b1b9c7ef464f5a01b47e42ec3736322445e8e2240ca5e69e2c78b3239ecfab21649
+-	run_kat sha512$suffix "RFC 4231, section 4.3, #3" "Jefe" "what do ya want for nothing?" 0x164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737
++	if is_fips_enabled; then
++		echo_deact "'RFC 4231, section 4.3, #1' test case deactivated in FIPS"
++		echo_deact "'RFC 4231, section 4.3, #2' test case deactivated in FIPS"
++		echo_deact "'RFC 4231, section 4.3, #3' test case deactivated in FIPS"
++	else
++		run_kat sha256$suffix "RFC 4231, section 4.3, #1" "Jefe" "what do ya want for nothing?" 0x5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843
++		run_kat sha384$suffix "RFC 4231, section 4.3, #2" "Jefe" "what do ya want for nothing?" 0xaf45d2e376484031617f78d2b58a6b1b9c7ef464f5a01b47e42ec3736322445e8e2240ca5e69e2c78b3239ecfab21649
++		run_kat sha512$suffix "RFC 4231, section 4.3, #3" "Jefe" "what do ya want for nothing?" 0x164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737
++	fi
+ 	run_kat sha256$suffix "RFC 4231, section 4.4, #1" 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd 0x773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe
+ 	run_kat sha384$suffix "RFC 4231, section 4.4, #2" 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd 0x88062608d3e6ad8a0aa2ace014c8a86f0aa635d947ac9febe83ef4e55966144b2a5ab39dc13814b94e3ab6e101a34f27
+ 	run_kat sha512$suffix "RFC 4231, section 4.4, #3" 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd 0xfa73b0089d56a284efb0f0756c890be9b1b5dbdd8ee81a3655f83e33b2279d39bf3e848279a722c806b485a47e67c807b946a337bee8942674278859e13292fb
+diff --git a/test/kcapi-convenience.c b/test/kcapi-convenience.c
+index c5ff4b4..1cdaebe 100644
+--- a/test/kcapi-convenience.c
++++ b/test/kcapi-convenience.c
+@@ -63,7 +63,7 @@ static int hashtest(void)
+ 
+ static int hmactest(void)
+ {
+-	char *in = "teststring";
++	char *in = "longteststring";
+ 	uint8_t out[64];
+ 	ssize_t ret;
+ 
+diff --git a/test/kcapi-dgst-test.sh b/test/kcapi-dgst-test.sh
+index 0ad5ed3..67576b3 100755
+--- a/test/kcapi-dgst-test.sh
++++ b/test/kcapi-dgst-test.sh
+@@ -105,8 +105,8 @@ test_stdin_stdout()
+ 	openssl dgst -sha256 -hmac $opensslkey $ORIGPT  | awk 'BEGIN {FS="= "} {print $2}' > $GENDGST.openssl
+ 	diff_file $GENDGST $GENDGST.openssl "STDIN / STDOUT test (keyed MD $keysize bits)"
+ 
+-	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwd" -s $SALT -c "hmac(sha256)" < $ORIGPT > $GENDGST
+-	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwd" -s $SALT -c "hmac(sha256)" < $ORIGPT > $GENDGST.2
++	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwordpassword" -s $SALT -c "hmac(sha256)" < $ORIGPT > $GENDGST
++	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwordpassword" -s $SALT -c "hmac(sha256)" < $ORIGPT > $GENDGST.2
+ 
+ 	diff_file $GENDGST $GENDGST.2 "STDIN / STDOUT test (password)"
+ }
+@@ -135,8 +135,8 @@ test_stdin_fileout()
+ 	openssl dgst -sha256 -hmac $opensslkey $ORIGPT  | awk 'BEGIN {FS="= "} {print $2}' > $GENDGST.openssl
+ 	diff_file $GENDGST $GENDGST.openssl "STDIN / FILEOUT test (keyed MD $keysize bits)"
+ 
+-	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwd" -s $SALT -c "hmac(sha256)" -o $GENDGST < $ORIGPT
+-	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwd" -s $SALT -c "hmac(sha256)" -o $GENDGST.2 < $ORIGPT
++	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwordpassword" -s $SALT -c "hmac(sha256)" -o $GENDGST < $ORIGPT
++	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwordpassword" -s $SALT -c "hmac(sha256)" -o $GENDGST.2 < $ORIGPT
+ 
+ 	diff_file $GENDGST $GENDGST.2 "STDIN / FILEOUT test (password)"
+ }
+@@ -165,8 +165,8 @@ test_filein_stdout()
+ 	openssl dgst -sha256 -hmac $opensslkey $ORIGPT  | awk 'BEGIN {FS="= "} {print $2}' > $GENDGST.openssl
+ 	diff_file $GENDGST $GENDGST.openssl "FILEIN / STDOUT test (keyed MD $keysize bits)"
+ 
+-	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwd" -s $SALT -c "hmac(sha256)" -i $ORIGPT > $GENDGST
+-	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwd" -s $SALT -c "hmac(sha256)"  -i $ORIGPT > $GENDGST.2
++	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwordpassword" -s $SALT -c "hmac(sha256)" -i $ORIGPT > $GENDGST
++	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwordpassword" -s $SALT -c "hmac(sha256)"  -i $ORIGPT > $GENDGST.2
+ 
+ 	diff_file $GENDGST $GENDGST.2 "FILEIN / STDOUT test (password)"
+ }
+@@ -197,8 +197,8 @@ test_filein_fileout()
+ 	openssl dgst -sha256 -hmac $opensslkey $ORIGPT  | awk 'BEGIN {FS="= "} {print $2}' > $GENDGST.openssl
+ 	diff_file $GENDGST $GENDGST.openssl "FILEIN / FILEOUT test (keyed MD $keysize bits)"
+ 
+-	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwd" -s $SALT -c "hmac(sha256)" -i $ORIGPT -o $GENDGST
+-	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwd" -s $SALT -c "hmac(sha256)"  -i $ORIGPT -o $GENDGST.2
++	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwordpassword" -s $SALT -c "hmac(sha256)" -i $ORIGPT -o $GENDGST
++	run_app kcapi-dgst -q --pbkdfiter 1000 -p "passwordpassword" -s $SALT -c "hmac(sha256)"  -i $ORIGPT -o $GENDGST.2
+ 
+ 	diff_file $GENDGST $GENDGST.2 "FILEIN / FILEOUT test (password)"
+ }
+diff --git a/test/kcapi-enc-test.sh b/test/kcapi-enc-test.sh
+index 3ace39c..63d2b23 100755
+--- a/test/kcapi-enc-test.sh
++++ b/test/kcapi-enc-test.sh
+@@ -163,8 +163,8 @@ test_stdin_stdout()
+ 	diff_file $GENCT $GENCT.openssl "STDIN / STDOUT enc test ($keysize bits) (openssl generated CT)"
+ 	diff_file $GENPT $GENPT.openssl "STDIN / STDOUT enc test ($keysize bits) (openssl generated PT)"
+ 
+-	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwd" -s $IV -e -c "ctr(aes)" --iv $IV < $ORIGPT > $GENCT
+-	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwd" -s $IV -d -c "ctr(aes)" --iv $IV < $GENCT > $GENPT
++	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwordpassword" -s $IV -e -c "ctr(aes)" --iv $IV < $ORIGPT > $GENCT
++	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwordpassword" -s $IV -d -c "ctr(aes)" --iv $IV < $GENCT > $GENPT
+ 
+ 	diff_file $ORIGPT $GENPT "STDIN / STDOUT enc test (password)"
+ }
+@@ -195,8 +195,8 @@ test_stdin_fileout()
+ 	diff_file $GENCT $GENCT.openssl "STDIN / FILEOUT enc test ($keysize bits) (openssl generated CT)"
+ 	diff_file $GENPT $GENPT.openssl "STDIN / FILEOUT enc test ($keysize bits) (openssl generated PT)"
+ 
+-	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwd" -s $IV -e -c "ctr(aes)" --iv $IV -o $GENCT < $ORIGPT
+-	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwd" -s $IV -d -c "ctr(aes)" --iv $IV -o $GENPT < $GENCT
++	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwordpassword" -s $IV -e -c "ctr(aes)" --iv $IV -o $GENCT < $ORIGPT
++	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwordpassword" -s $IV -d -c "ctr(aes)" --iv $IV -o $GENPT < $GENCT
+ 
+ 	diff_file $ORIGPT $GENPT "STDIN / FILEOUT enc test (password)"
+ }
+@@ -227,8 +227,8 @@ test_filein_stdout()
+ 	diff_file $GENCT $GENCT.openssl "FILEIN / STDOUT enc test ($keysize bits) (openssl generated CT)"
+ 	diff_file $GENPT $GENPT.openssl "FILEIN / STDOUT enc test ($keysize bits) (openssl generated PT)"
+ 
+-	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwd" -s $IV -e -c "ctr(aes)" --iv $IV -i $ORIGPT > $GENCT
+-	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwd" -s $IV -d -c "ctr(aes)" --iv $IV -i $GENCT > $GENPT
++	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwordpassword" -s $IV -e -c "ctr(aes)" --iv $IV -i $ORIGPT > $GENCT
++	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwordpassword" -s $IV -d -c "ctr(aes)" --iv $IV -i $GENCT > $GENPT
+ 
+ 	diff_file $ORIGPT $GENPT "FILEIN / STDOUT enc test (password)"
+ }
+@@ -271,8 +271,8 @@ test_filein_fileout()
+ 	diff_file $GENCT $GENCT.openssl "FILEIN / FILEOUT enc test ($keysize bits) (openssl generated CT)"
+ 	diff_file $GENPT $GENPT.openssl "FILEIN / FILEOUT enc test ($keysize bits) (openssl generated PT)"
+ 
+-	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwd" -s "123" -e -c "cbc(aes)" --iv $IV -i $ORIGPT -o $GENCT
+-	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwd" -s "123" -d -c "cbc(aes)" --iv $IV -i $GENCT -o $GENPT
++	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwordpassword" -s "123" -e -c "cbc(aes)" --iv $IV -i $ORIGPT -o $GENCT
++	run_app kcapi-enc -q --pbkdfiter 1000 -p "passwordpassword" -s "123" -d -c "cbc(aes)" --iv $IV -i $GENCT -o $GENPT
+ 
+ 	diff_file $ORIGPT $GENPT "FILEIN / FILEOUT enc test (password)"
+ }
+diff --git a/test/test.sh b/test/test.sh
+index b889335..e07589e 100755
+--- a/test/test.sh
++++ b/test/test.sh
+@@ -450,27 +450,27 @@ PBKDF_exp_7="133a4ce837b4d2521ee2bf03e11c71ca794e0797"
+ 
+ PBKDF_name_8="hmac(sha256)"
+ PBKDF_salt_8="73616c74"
+-PBKDF_pw_8="70617373776f7264"
++PBKDF_pw_8="70617373776f726470617373776f7264"
+ PBKDF_count_8=4096
+-PBKDF_exp_8="c5e478d59288c841aa530db6845c4c8d962893a0"
++PBKDF_exp_8="9cefdbeb6abaaf0e0b6fa3fb5bc9f2b8301d6aca"
+ 
+ PBKDF_name_9="hmac(sha224)"
+ PBKDF_salt_9="73616c74"
+-PBKDF_pw_9="70617373776f7264"
++PBKDF_pw_9="70617373776f726470617373776f7264"
+ PBKDF_count_9=4096
+-PBKDF_exp_9="218c453bf90635bd0a21a75d172703ff6108ef60"
++PBKDF_exp_9="624f7dd223ae0bd8d46a69b27f84e703e7dadd70"
+ 
+ PBKDF_name_10="hmac(sha384)"
+ PBKDF_salt_10="73616c74"
+-PBKDF_pw_10="70617373776f7264"
++PBKDF_pw_10="70617373776f726470617373776f7264"
+ PBKDF_count_10=4096
+-PBKDF_exp_10="559726be38db125bc85ed7895f6e3cf574c7a01c"
++PBKDF_exp_10="2c34a3242a138933c63fce6d827e4acf57ef528d"
+ 
+ PBKDF_name_11="hmac(sha512)"
+ PBKDF_salt_11="73616c74"
+-PBKDF_pw_11="70617373776f7264"
++PBKDF_pw_11="70617373776f726470617373776f7264"
+ PBKDF_count_11=4096
+-PBKDF_exp_11="d197b1b33db0143e018b12f3d1d1479e6cdebdcc"
++PBKDF_exp_11="299ae1f55743f2cb81be4a417b878ab32374660b"
+ 
+ PBKDF_name_12="cmac(aes)"
+ PBKDF_salt_12="73616c74"
+@@ -480,9 +480,9 @@ PBKDF_exp_12="c4c112c6e1e3b8757640603dec78825ff87605a7"
+ 
+ PBKDF_name_13="hmac(sha512)"
+ PBKDF_salt_13="73616c74"
+-PBKDF_pw_13="70617373776f7264"
++PBKDF_pw_13="70617373776f726470617373776f7264"
+ PBKDF_count_13=4096
+-PBKDF_exp_13="d197b1b33db0143e018b12f3d1d1479e6cdebdcc97c5c0f87f6902e072f457b5143f30602641b3d55cd335988cb36b84376060ecd532e039b742a239434af2d5d6883f0be4c24d363b638f4c2f8d917533cd4158937d0b490697a64adadb07f180c323080a7368033eeadf9e612b2e"
++PBKDF_exp_13="299ae1f55743f2cb81be4a417b878ab32374660b17f5b328662e56296582e8a285c307947b41e00fed812c978212394574f57756c481b3d64cc91659f75a468383bcad1e25f2b85c15f8ac7004484889081eb91001b0feab9b12dd51e001491c795bdf45ff880ffe493e7acdd91f1a"
+ 
+ ###########################################################################
+ ###########################################################################
+@@ -491,9 +491,9 @@ PBKDF_exp_13="d197b1b33db0143e018b12f3d1d1479e6cdebdcc97c5c0f87f6902e072f457b514
+ #RFC 5869 Appendix A vectors
+ HKDF_name_1="hmac(sha256)"
+ HKDF_ikm_1="0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+-HKDF_salt_1="000102030405060708090a0b0c"
++HKDF_salt_1="000102030405060708090a0b0c0d"
+ HKDF_info_1="f0f1f2f3f4f5f6f7f8f9"
+-HKDF_exp_1="3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
++HKDF_exp_1="cb95d056d6ba6f084df0a03a3317bcca7f83773204b76f527f4f06736168a52bbcd88869a3a4e7972dcd"
+ 
+ HKDF_name_2="hmac(sha256)"
+ HKDF_ikm_2="000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f"
+@@ -555,6 +555,11 @@ KPP_exp_2="78fbd4d1ed7ea6fc8f1e1a6f8a5c750845401589ad3c135088b4ec78f54c57b436d1a
+ ###########################################################################
+ ###########################################################################
+ 
++is_fips_enabled()
++{
++	test $(cat /proc/sys/crypto/fips_enabled) = "1"
++}
++
+ # Test required for test with multiple IOVECs on i686
+ check_memory() {
+ 	if [ $(cat /proc/sys/net/core/optmem_max) -lt $1 ]
+@@ -576,7 +581,14 @@ check_memory_soft() {
+ hashfunc()
+ {
+ 	stream=$1
+-	HASHEXEC="1 2 3 4 5 6 7 8 9"
++
++	if is_fips_enabled; then
++		echo_deact "Hash tests using 3DES are disabled in FIPS"
++		HASHEXEC="2 3 4 5 6 7 8 9"
++	else
++		HASHEXEC="1 2 3 4 5 6 7 8 9"
++	fi
++
+ 	for i in $HASHEXEC
+ 	do
+ 		eval HASH_name=\$HASH_name_$i
+@@ -630,7 +642,12 @@ symfunc()
+ 	aligned=$3
+ 	aiofallback=$4
+ 
+-	SYMEXEC="1 2 3 4 5 6 7 8 9 10 11 12"
++	if is_fips_enabled; then
++		echo_deact "Symmetric tests using 3DES are disabled in FIPS"
++		SYMEXEC="1 2 3 8 9 10 11 12"
++	else
++		SYMEXEC="1 2 3 4 5 6 7 8 9 10 11 12"
++	fi
+ 
+ 	if [ x"$stream" = x"X" ]
+ 	then
+@@ -666,7 +683,11 @@ symfunc()
+ 
+ 		# Disable XTS tests for multi-threading due to the issue
+ 		# discussed in https://github.com/smuellerDD/libkcapi/issues/92
+-		SYMEXEC="1 2 3 4 5 6 7"
++		if is_fips_enabled; then
++			SYMEXEC="1 2 3"
++		else
++			SYMEXEC="1 2 3 4 5 6 7"
++		fi
+ 	else
+ 		sout="one shot"
+ 	fi
+@@ -1148,7 +1169,13 @@ pbkdftest()
+ {
+ 	aligned=$1
+ 
+-	PBKDFEXEC="1 2 3 4 5 6 7 8 9 10 11 12 13"
++	if is_fips_enabled; then
++		echo_deact "PBKDF tests using SHA1 are disabled in FIPS"
++		PBKDFEXEC="8 9 10 11 12 13"
++	else
++		PBKDFEXEC="1 2 3 4 5 6 7 8 9 10 11 12 13"
++	fi
++
+ 	for i in $PBKDFEXEC
+ 	do
+ 		eval PBKDF_name=\$PBKDF_name_$i
+@@ -1185,7 +1212,13 @@ hkdftest()
+ {
+ 	aligned=$1
+ 
+-	HKDFEXEC="1 2 3 4 5 6 7"
++	if is_fips_enabled; then
++		echo_deact "HKDF tests using SHA1 and zero length salts are disabled in FIPS"
++		HKDFEXEC="1 2"
++	else
++		HKDFEXEC="1 2 3 4 5 6 7"
++	fi
++
+ 	for i in $HKDFEXEC
+ 	do
+ 		eval HKDF_name=\$HKDF_name_$i

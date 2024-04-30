@@ -1,7 +1,7 @@
 # Shared object version of libkcapi.
 %global vmajor            1
-%global vminor            3
-%global vpatch            1
+%global vminor            4
+%global vpatch            0
 
 # Do we build the replacements packages?
 %bcond_with replace_coreutils
@@ -26,9 +26,7 @@
 %if 0%{?rhel}
 %bcond_with cppcheck
 %else
-# Temporarily disable cppcheck on Fedora until bz#1923600 is fixed in rawhide
-%bcond_with cppcheck
-#bcond_without cppcheck
+%bcond_without cppcheck
 %endif
 
 # Use `--without test` to build without running the tests
@@ -86,8 +84,8 @@
 %global hmaccalc_evr      0.9.14-10%{?dist}
 %endif
 
-%global apps_hmaccalc sha1hmac sha224hmac sha256hmac sha384hmac sha512hmac
-%global apps_fipscheck sha1sum sha224sum sha256sum sha384sum sha512sum md5sum fipscheck fipshmac
+%global apps_hmaccalc sha1hmac sha224hmac sha256hmac sha384hmac sha512hmac sm3hmac
+%global apps_fipscheck sha1sum sha224sum sha256sum sha384sum sha512sum md5sum sm3sum fipscheck fipshmac
 
 # On old kernels use mock hashers implemented via openssl
 %if %{lua:print(rpm.vercmp(posix.uname('%r'), '3.19'));} >= 0
@@ -125,17 +123,21 @@ done                                                             \
 
 Name:           libkcapi
 Version:        %{vmajor}.%{vminor}.%{vpatch}
-Release:        3%{?dist}
+Release:        2%{?dist}
 Summary:        User space interface to the Linux Kernel Crypto API
 
-License:        BSD or GPLv2
+License:        BSD-3-Clause OR GPL-2.0-only
 URL:            https://www.chronox.de/%{name}.html
 Source0:        https://www.chronox.de/%{name}/%{name}-%{version}.tar.xz
 Source1:        https://www.chronox.de/%{name}/%{name}-%{version}.tar.xz.asc
 Source2:        sha512hmac-openssl.sh
 Source3:        fipshmac-openssl.sh
 
-Patch1:         0001-Use-GCCs-__symver__-attribute.patch
+Patch1:         001-tests-kernel-version.patch
+Patch2:         002-fips-disable-ansi_cprng.patch
+Patch3:         003-zeroize-hasher.patch
+Patch4:         004-hasher-target-option.patch
+Patch5:         005-fips-mode-tests.patch
 
 BuildRequires:  bash
 BuildRequires:  coreutils
@@ -156,7 +158,7 @@ BuildRequires:  docbook-utils-pdf
 BuildRequires:  clang
 %endif
 %if %{with cppcheck}
-BuildRequires:  cppcheck
+BuildRequires:  cppcheck >= 2.4
 %endif
 
 # For ownership of %%{_sysctldir}.
@@ -378,7 +380,8 @@ EOF
 %if !%{with replace_coreutils}
 %{__rm} -f                            \
   %{buildroot}%{_bindir}/md5sum       \
-  %{buildroot}%{_bindir}/sha*sum
+  %{buildroot}%{_bindir}/sha*sum      \
+  %{buildroot}%{_bindir}/sm*sum
 %endif
 
 %if !%{with replace_fipscheck}
@@ -387,6 +390,7 @@ EOF
 
 %if !%{with replace_hmaccalc}
 %{__rm} -f %{buildroot}%{_bindir}/sha*hmac
+%{__rm} -f %{buildroot}%{_bindir}/sm*hmac
 %endif
 
 # We don't ship autocrap dumplings.
@@ -479,8 +483,10 @@ popd
 %files          checksum
 %{_bindir}/md5sum
 %{_bindir}/sha*sum
+%{_bindir}/sm*sum
 %{_libdir}/fipscheck/md5sum.hmac
 %{_libdir}/fipscheck/sha*sum.hmac
+%{_libdir}/fipscheck/sm*sum.hmac
 %endif
 
 %if %{with replace_fipscheck}
@@ -492,7 +498,9 @@ popd
 %if %{with replace_hmaccalc}
 %files          hmaccalc
 %{_bindir}/sha*hmac
+%{_bindir}/sm*hmac
 %{_libdir}/hmaccalc/sha*hmac.hmac
+%{_libdir}/hmaccalc/sm*hmac.hmac
 %endif
 
 
@@ -512,6 +520,22 @@ popd
 
 
 %changelog
+* Fri Dec 01 2023 Zoltan Fridrich <zfridric@redhat.com> - 1.4.0-2
+- Backport fixes for kcapi-hasher target option
+  Related: RHEL-15298
+- Fix kcapi tests in FIPS mode
+  Resolves: RHEL-2405
+
+* Wed Nov 01 2023 Zoltan Fridrich <zfridric@redhat.com> - 1.4.0-1
+- Update to new upstream release 1.4.0
+  Resolves: RHEL-5367
+- Add a patch to fix auxiliary tests in FIPS mode
+  Resolves: RHEL-2405
+- Add a patch to zeroize kcapi-hasher for FIPS 140-3
+  Resolves: RHEL-15112
+- Add a patch to allow overriding target file in kcapi-hasher
+  Resolves: RHEL-15298
+
 * Mon Aug 09 2021 Mohan Boddu <mboddu@redhat.com> - 1.3.1-3
 - Rebuilt for IMA sigs, glibc 2.34, aarch64 flags
   Related: rhbz#1991688

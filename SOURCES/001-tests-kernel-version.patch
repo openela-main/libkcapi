@@ -1,0 +1,40 @@
+From c2af62dcc7a287f3c14f6aaec5724401c1ea470a Mon Sep 17 00:00:00 2001
+From: Ondrej Mosnacek <omosnace@redhat.com>
+Date: Mon, 15 Aug 2022 10:19:50 +0200
+Subject: [PATCH] tests: fix overly-optimistic kernel version checks
+
+The mainline kernel is now at version 6.0 so these >= 5.99 checks are
+now incorrectly enabling tests that don't work. Instead of bumping the
+imaginary version and face the same problem again in a couple years,
+replace the checks with 'false' and a TODO comment.
+
+Signed-off-by: Ondrej Mosnacek <omosnace@redhat.com>
+Signed-off-by: Stephan Mueller <smueller@chronox.de>
+---
+ test/test.sh | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/test/test.sh b/test/test.sh
+index 1d9be73..a75b802 100755
+--- a/test/test.sh
++++ b/test/test.sh
+@@ -1560,7 +1560,8 @@ else
+ 	echo_deact "AEAD tests of copied AAD deactivated"
+ fi
+ 
+-if $(check_min_kernelver 5 99); then
++# TODO add version check when supported upstream
++if false; then
+ 	asymfunc 4
+ 	asymfunc 4 -s
+ 	asymfunc 4 -v
+@@ -1583,7 +1584,8 @@ else
+ 	echo_deact "All asymmetric tests deactivated"
+ fi
+ 
+-if $(check_min_kernelver 5 99); then
++# TODO add version check when supported upstream
++if false; then
+ 	kppfunc 13
+ 	kppfunc 13 X -m
+ 	kppfunc 13 -v
