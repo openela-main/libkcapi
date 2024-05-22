@@ -1,6 +1,6 @@
 # Shared object version of libkcapi.
 %global vmajor            1
-%global vminor            2
+%global vminor            4
 %global vpatch            0
 
 # Do we build the replacements packages?
@@ -22,6 +22,21 @@
 %else
 %bcond_with test_package
 %endif
+# disable cppcheck analysis in ELN/RHEL to avoid the dependency bz#1931518
+%if 0%{?rhel}
+%bcond_with cppcheck
+%else
+%bcond_without cppcheck
+%endif
+
+# Use `--without test` to build without running the tests
+%bcond_without test
+# Use `--without fuzz_test` to skip the fuzz test during build
+%bcond_without fuzz_test
+# Use `--without doc` to build without the -doc subpackage
+%bcond_without doc
+# Use `--without clang_sa` to skip clang static analysis during build
+%bcond_without clang_sa
 
 # This package needs at least Linux Kernel v4.10.0.
 %global min_kernel_ver    4.10.0
@@ -69,16 +84,16 @@
 %global hmaccalc_evr      0.9.14-10%{?dist}
 %endif
 
-%global apps_hmaccalc sha1hmac sha224hmac sha256hmac sha384hmac sha512hmac
-%global apps_fipscheck sha1sum sha224sum sha256sum sha384sum sha512sum md5sum fipscheck fipshmac
+%global apps_hmaccalc sha1hmac sha224hmac sha256hmac sha384hmac sha512hmac sm3hmac
+%global apps_fipscheck sha1sum sha224sum sha256sum sha384sum sha512sum md5sum sm3sum fipscheck fipshmac
 
 # On old kernels use mock hashers implemented via openssl
 %if %{lua:print(rpm.vercmp(posix.uname('%r'), '3.19'));} >= 0
 %global sha512hmac bin/kcapi-hasher -n sha512hmac
 %global fipshmac   bin/kcapi-hasher -n fipshmac
 %else
-%global sha512hmac bash %{_sourcedir}/sha512hmac-openssl.sh
-%global fipshmac   bash %{_sourcedir}/fipshmac-openssl.sh
+%global sha512hmac bash %{SOURCE2}
+%global fipshmac   bash %{SOURCE3}
 %endif
 
 # Add generation of HMAC checksums of the final stripped
@@ -112,29 +127,40 @@ Version:        %{vmajor}.%{vminor}.%{vpatch}
 Release:        2%{?dist}
 Summary:        User space interface to the Linux Kernel Crypto API
 
-License:        BSD or GPLv2
-URL:            http://www.chronox.de/%{name}.html
-Source0:        http://www.chronox.de/%{name}/%{name}-%{version}.tar.xz
-Source1:        http://www.chronox.de/%{name}/%{name}-%{version}.tar.xz.asc
+License:        BSD-3-Clause OR GPL-2.0-only
+URL:            https://www.chronox.de/%{name}.html
+Source0:        https://www.chronox.de/%{name}/%{name}-%{version}.tar.xz
+Source1:        https://www.chronox.de/%{name}/%{name}-%{version}.tar.xz.asc
 Source2:        sha512hmac-openssl.sh
 Source3:        fipshmac-openssl.sh
 
-Patch100:       100-fix-double-free-hasher.patch
+Patch1:         001-tests-kernel-version.patch
+Patch2:         002-fips-disable-ansi_cprng.patch
+Patch3:         003-zeroize-hasher.patch
+Patch4:         004-hasher-target-option.patch
+Patch5:         005-fips-mode-tests.patch
 
 BuildRequires:  bash
-BuildRequires:  clang
 BuildRequires:  coreutils
-BuildRequires:  cppcheck
-BuildRequires:  docbook-utils-pdf
 BuildRequires:  gcc
-BuildRequires:  git
+BuildRequires:  git-core
 BuildRequires:  hardlink
 BuildRequires:  kernel-headers >= %{min_kernel_ver}
 BuildRequires:  libtool
+BuildRequires:  make
 BuildRequires:  openssl
-BuildRequires:  perl
+BuildRequires:  perl-interpreter
 BuildRequires:  systemd
 BuildRequires:  xmlto
+%if %{with doc}
+BuildRequires:  docbook-utils-pdf
+%endif
+%if %{with clang_sa}
+BuildRequires:  clang
+%endif
+%if %{with cppcheck}
+BuildRequires:  cppcheck >= 2.4
+%endif
 
 # For ownership of %%{_sysctldir}.
 Requires:       systemd
@@ -164,12 +190,14 @@ Requires:       %{name}%{?_isa} == %{version}-%{release}
 Header files for applications that use %{name}.
 
 
+%if %{with doc}
 %package        doc
 Summary:        User documentation for the %{name} package
 Requires:       %{name}%{?_isa} == %{version}-%{release}
 
 %description    doc
 User documentation for %{name}.
+%endif
 
 
 %if %{with replace_coreutils}
@@ -253,7 +281,7 @@ Requires:       %{name}-checksum%{?_isa} == %{version}-%{release}
 %endif
 Requires:       coreutils
 Requires:       openssl
-Requires:       perl
+Requires:       perl-interpreter
 
 %description    tests
 Auxiliary scripts for testing %{name}.
@@ -315,7 +343,11 @@ EOF
   --enable-sum-prefix=   \
   --enable-sum-dir=/%{_lib} \
   --with-pkgconfigdir=%{_libdir}/pkgconfig
+%if %{with doc}
 %make_build all doc
+%else
+%make_build all man
+%endif
 
 
 %install
@@ -332,14 +364,21 @@ EOF
 %if %{with_sysctl_tweak}
   README.%{distroname_ext}                          \
 %endif
-  README.md CHANGES.md TODO doc/%{name}.p{df,s}
+%if %{with doc}
+  doc/%{name}.p{df,s}                               \
+%endif
+  README.md CHANGES.md TODO
+
+%if %{with doc}
 %{__cp} -pr lib/doc/html %{buildroot}%{_pkgdocdir}
+%endif
 
 # Install replacement tools, if enabled.
 %if !%{with replace_coreutils}
 %{__rm} -f                            \
   %{buildroot}%{_bindir}/md5sum       \
-  %{buildroot}%{_bindir}/sha*sum
+  %{buildroot}%{_bindir}/sha*sum      \
+  %{buildroot}%{_bindir}/sm*sum
 %endif
 
 %if !%{with replace_fipscheck}
@@ -348,6 +387,7 @@ EOF
 
 %if !%{with replace_hmaccalc}
 %{__rm} -f %{buildroot}%{_bindir}/sha*hmac
+%{__rm} -f %{buildroot}%{_bindir}/sm*hmac
 %endif
 
 # We don't ship autocrap dumplings.
@@ -359,11 +399,13 @@ EOF
 # Remove 0-size files.
 %{_bindir}/find %{buildroot} -type f -size 0 -print -delete
 
+%if %{with doc}
 # Make sure all docs have non-exec permissions, except for the dirs.
 %{_bindir}/find %{buildroot}%{_pkgdocdir} -type f -print | \
   %{_bindir}/xargs %{__chmod} -c 0644
 %{_bindir}/find %{buildroot}%{_pkgdocdir} -type d -print | \
   %{_bindir}/xargs %{__chmod} -c 0755
+%endif
 
 # Possibly save some space by hardlinking.
 for d in %{_mandir} %{_pkgdocdir}; do
@@ -373,10 +415,14 @@ done
 
 %check
 # Some basic sanity checks.
-for t in cppcheck scan; do
-  %make_build $t
-done
+%if %{with clang_sa}
+%make_build scan
+%endif
+%if %{with cppcheck}
+%make_build cppcheck
+%endif
 
+%if %{with test}
 # On some arches `/proc/sys/net/core/optmem_max` is lower than 20480,
 # which is the lowest limit needed to run the testsuite.  If that limit
 # is not met, we do not run it.
@@ -385,10 +431,13 @@ done
 %if %{lua:print(rpm.vercmp(posix.uname('%r'), '5.1'));} >= 0
 # Real testsuite.
 pushd test
-# Ignore test result since the CI will do better testing anyway
+%if %{with fuzz_test}
+ENABLE_FUZZ_TEST=1 \
+%endif
 NO_32BIT_TEST=1    \
-  ./test-invocation.sh || true
+  ./test-invocation.sh
 popd
+%endif
 %endif
 %endif
 
@@ -397,9 +446,9 @@ popd
 
 
 %files
-%license COPYING*
 %doc %dir %{_pkgdocdir}
 %doc %{_pkgdocdir}/README.md
+%license COPYING*
 /%{_lib}/%{name}.so.%{vmajor}
 /%{_lib}/%{name}.so.%{version}
 /%{_lib}/fipscheck/%{name}.so.%{vmajor}.hmac
@@ -419,16 +468,22 @@ popd
 %{_libdir}/pkgconfig/%{name}.pc
 
 
+%if %{with doc}
 %files          doc
-%doc %{_pkgdocdir}
+%doc %{_pkgdocdir}/html
+%doc %{_pkgdocdir}/%{name}.pdf
+%doc %{_pkgdocdir}/%{name}.ps
+%endif
 
 
 %if %{with replace_coreutils}
 %files          checksum
 %{_bindir}/md5sum
 %{_bindir}/sha*sum
+%{_bindir}/sm*sum
 /%{_lib}/fipscheck/md5sum.hmac
 /%{_lib}/fipscheck/sha*sum.hmac
+/%{_lib}/fipscheck/sm*sum.hmac
 %endif
 
 %if %{with replace_fipscheck}
@@ -440,7 +495,9 @@ popd
 %if %{with replace_hmaccalc}
 %files          hmaccalc
 %{_bindir}/sha*hmac
+%{_bindir}/sm*hmac
 /%{_lib}/hmaccalc/sha*hmac.hmac
+/%{_lib}/hmaccalc/sm*hmac.hmac
 %endif
 
 
@@ -460,6 +517,22 @@ popd
 
 
 %changelog
+* Fri Dec 01 2023 Zoltan Fridrich <zfridric@redhat.com> - 1.4.0-2
+- Backport fixes for kcapi-hasher target option
+  Related: RHEL-15300
+- Fix kcapi tests in FIPS mode
+  Resolves: RHEL-2406
+
+* Wed Nov 01 2023 Zoltan Fridrich <zfridric@redhat.com> - 1.4.0-1
+- Update to new upstream release 1.4.0
+  Resolves: RHEL-5366
+- Add a patch to fix auxiliary tests in FIPS mode
+  Resolves: RHEL-2406
+- Add a patch to zeroize kcapi-hasher for FIPS 140-3
+  Resolves: RHEL-15290
+- Add a patch to allow overriding target file in kcapi-hasher
+  Resolves: RHEL-15300
+
 * Tue May 26 2020 Sahana Prasad <sahana@redhat.com> - 1.2.0-2
 - Fix double free issue in hasher()
 
