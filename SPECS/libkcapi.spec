@@ -124,7 +124,7 @@ done                                                             \
 
 Name:           libkcapi
 Version:        %{vmajor}.%{vminor}.%{vpatch}
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        User space interface to the Linux Kernel Crypto API
 
 License:        BSD-3-Clause OR GPL-2.0-only
@@ -139,6 +139,9 @@ Patch2:         002-fips-disable-ansi_cprng.patch
 Patch3:         003-zeroize-hasher.patch
 Patch4:         004-hasher-target-option.patch
 Patch5:         005-fips-mode-tests.patch
+Patch6:         006-CVE-2026-71226.patch
+Patch7:         007-CVE-2026-71227.patch
+Patch8:         008-CVE-2026-71225.patch
 
 BuildRequires:  bash
 BuildRequires:  coreutils
@@ -517,6 +520,16 @@ popd
 
 
 %changelog
+* Tue Aug 18 2026 Zoltan Fridrich <zfridric@redhat.com> - 1.4.0-3
+- CVE-2026-71226: Fix memory corruption via uncanceled AIO requests
+  on error in libkcapi's one-shot AIO path
+  Resolves: RHEL-224809
+- CVE-2026-71227: Fix infinite loop denial of service in libkcapi
+  _kcapi_aio_read_all() due to unhandled io_getevents() timeout return
+  Resolves: RHEL-224975
+- CVE-2026-71225: Fix IV reuse in libkcapi one-shot symmetric cipher chunking
+  Resolves: RHEL-224697
+
 * Fri Dec 01 2023 Zoltan Fridrich <zfridric@redhat.com> - 1.4.0-2
 - Backport fixes for kcapi-hasher target option
   Related: RHEL-15300
