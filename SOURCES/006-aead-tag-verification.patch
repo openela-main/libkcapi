@@ -1,0 +1,104 @@
+diff --git a/apps/kcapi-enc.c b/apps/kcapi-enc.c
+index e7aa9db..0ca7c19 100644
+--- a/apps/kcapi-enc.c
++++ b/apps/kcapi-enc.c
+@@ -608,7 +608,7 @@ static int cipher_op(struct kcapi_handle *handle, struct opt_data *opts)
+ 		}
+
+ 	/* Get data from file. */
+-	} else {
++	} else if (insb.st_size) {
+ 		uint32_t sent_data = 0;
+
+ 		inmem = mmap(NULL, (size_t)insb.st_size, PROT_READ, MAP_SHARED,
+@@ -704,6 +704,27 @@ static int cipher_op(struct kcapi_handle *handle, struct opt_data *opts)
+ 		}
+ 	}
+
++	/* AEAD with no input. Still generate/verify the tag */
++	if (opts->aad && !generated_bytes) {
++		outsize = outbufsize(handle, opts, 0);
++
++		ret = sendtag(handle, opts, tagbuf, tagtmpbuf);
++		if (ret)
++			goto out;
++
++		if (outfd != STDOUT_FD) {
++			ret = ftruncate(outfd, (off_t)outsize);
++			if (ret)
++				goto out;
++		}
++
++		ret = return_data(handle, opts, outfd, outsize, 0, 0);
++		if (ret < 0)
++			goto out;
++
++		generated_bytes += (unsigned int)ret;
++	}
++
+ out:
+ 	if (inmem && inmem != MAP_FAILED)
+ 		munmap(inmem, (size_t)insb.st_size);
+diff --git a/test/kcapi-enc-test.sh b/test/kcapi-enc-test.sh
+index 1686302..37d3448 100755
+--- a/test/kcapi-enc-test.sh
++++ b/test/kcapi-enc-test.sh
+@@ -321,9 +321,58 @@ test_gcm_enc()
+ 	fi
+ }
+
++test_aead_zero_len()
++{
++	local aadlen=${#GCM_AAD}
++
++	aadlen=$(($aadlen/2))
++
++	: > ${TSTPREFIX}empty
++
++	# Encrypt zero-length plaintext
++	exec 10<${TSTPREFIX}gcm_key; run_app kcapi-enc --keyfd 10 -e -c "gcm(aes)" -i ${TSTPREFIX}empty -o ${TSTPREFIX}gcm_zero_ct --iv $GCM_IV --aad $GCM_AAD --taglen $GCM_TAGLEN
++	if [ $? -ne 0 ]
++	then
++		echo_fail "AEAD zero-length encryption failed"
++		return
++	fi
++
++	local ctsize=$(stat -c %s ${TSTPREFIX}gcm_zero_ct)
++	if [ $ctsize -eq 0 ]
++	then
++		echo_fail "AEAD zero-length encryption produced no output"
++		return
++	fi
++	echo_pass "AEAD zero-length GCM encrypt"
++
++	# Extract the tag from the encryption output
++	local tag=$(bin2hex_noaad ${TSTPREFIX}gcm_zero_ct $aadlen)
++
++	# Decrypt zero-length ciphertext with correct tag
++	exec 10<${TSTPREFIX}gcm_key; run_app kcapi-enc --keyfd 10 -d -c "gcm(aes)" -i ${TSTPREFIX}empty -o ${TSTPREFIX}gcm_zero_pt --iv $GCM_IV --aad $GCM_AAD --tag $tag
++	if [ $? -ne 0 ]
++	then
++		echo_fail "AEAD zero-length decryption with valid tag failed"
++		return
++	fi
++	echo_pass "AEAD zero-length GCM decrypt with valid tag"
++
++	# Decrypt zero-length ciphertext with wrong tag - must fail
++	exec 10<${TSTPREFIX}gcm_key; run_app kcapi-enc --keyfd 10 -d -c "gcm(aes)" -i ${TSTPREFIX}empty -o ${TSTPREFIX}gcm_zero_pt --iv $GCM_IV --aad $GCM_AAD --tag 00000000000000000000000000000000 -q
++
++	# 182 == -EBADMSG
++	if [ $? -eq 182 ]
++	then
++		echo_pass "AEAD zero-length GCM decrypt integrity violation"
++	else
++		echo_fail "AEAD zero-length GCM decrypt integrity violation not caught"
++	fi
++}
++
+ init_setup
+ test_gcm_enc
+ test_ccm_dec
++test_aead_zero_len
+
+ for i in 1 15 16 29 32 257 512 1023 16385 65535 65536 65537 99999 100000 100001
+ do
